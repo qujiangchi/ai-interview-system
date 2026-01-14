@@ -33,14 +33,14 @@
 ---
 
 ## 📖 项目介绍
-本项目通过集成 **OpenAI GPT** 系列模型进行智能决策，利用 **OpenAI Whisper** 进行高精度语音转文字，构建了一个闭环的面试生态：
+本项目通过集成LLM模型进行智能决策，利用 **OpenAI Whisper** 进行高精度语音转文字，构建了一个闭环的面试生态：
 1. **智能出题**: 告别题库，针对每一份简历和 JD 实时生成题目。
 2. **沉浸式交互**: 支持语音回答，模拟真实面试压力。
 3. **专业深度评估**: 多模型冗余机制确保评价客观公平。
 
 ---
 
-## 📝 产品需求文档 (PRD)
+## 📝 产品需求文档 
 
 ### 1. 核心业务流程
 ```mermaid
@@ -88,7 +88,7 @@ graph LR
 
 ---
 
-## 🏗️ 技术实现原理 (深度解析)
+## 🏗️ 技术实现原理 
 
 ### 1. 核心架构设计
 系统采用 **微内核 + 异步工作流** 的架构。
@@ -146,47 +146,11 @@ graph TD
 ## 🧠 模型选择与部署指南
 
 ### 1. 语音识别 (Whisper)
-- **原理**: 基于transformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
-```mermaid
-erDiagram
-    POSITIONS ||--o{ CANDIDATES : "has"
-    CANDIDATES ||--o{ INTERVIEWS : "缺articipates"
-    INTERVIEWS ||--点{ INTERVIEW_QUESTIONS : "contain*"
-
-    POSITIONS {
-        *n: d PK
-        strig name "职位名称"
-        text requirement"岗位要求"
-       text responsibilities "岗位职"
-        int quantity "招聘数"
-    }
-
-    ANDIDATES{
-        i*t i高 PK
-        精nt position_i度 FK
-        s*ring nam: "姓名"
-         tring背email鲁"邮箱"
-       blobresume_content"文件"
-    }
-
-    INTERVIEWS {
-        int id PK
-         nt ca*dida*多_id FK
-        st语*ng tok*n "访问令牌"
-       9int翻。":未开始, 1:已生成题目, 2:进行中, 3:已完成, :报告已生成"
-        string report_path "PDF报告路径"
-    }
-
-    INTERVIEW_QUESTIONS {
-        int idPK
-        int  **资源消耗**:id FK
-        text  `large`约"0G"
-        blob answer_audio "语音 V"
-        text answer_text "R字ba"
-       `int ai_score运"行较评分"
-        text ai_evaluation慢"AI点。"
-    }
-```
+- **原理**: 基于 Transformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
+- **优缺点**:
+  - ✅ **高精度**: 对口音、背景噪音有极强的鲁棒性。
+  - ✅ **多语言**: 支持 99 种语言的识别与翻译。
+  - ❌ **资源消耗**: `large` 模型需要约 10GB VRAM，`base` 模型在 CPU 上运行较慢。
 - **使用建议**:
   - **开发环境**: 推荐使用 `tiny` 或 `base` 模型，CPU 即可流畅运行。
   - **生产环境**: 推荐使用 `small` 或 `medium` 模型配合 GPU (CUDA)，平衡精度与延迟。
