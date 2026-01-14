@@ -146,7 +146,7 @@ graph TD
 ## 🧠 模型选择与部署指南
 
 ### 1. 语音识别 (Whisper)
-- **原理**: 基于ransformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
+- **原理**: 基于transformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
 ```mermaid
 erDiagram
     POSITIONS ||--o{ CANDIDATES : "has"
@@ -222,13 +222,100 @@ erDiagram
 
 ---
 
-## 💾 数据库设计
+## 💾 数据库设计 (Database Design)
 
-### 核心 ER 模型简述
-- **`positions`**: 存储 JD、负责人、HC 等。
-- **`candidates`**: 存储基本信息及 **BLOB 格式的 PDF 简历**。
-- **`interviews`**: 核心状态表，通过 `status` (0-4) 控制面试生命周期。
-- **`interview_questions`**: 存储题目、回答文本、**回答语音 (BLOB)** 及 AI 评分。
+系统默认支持 **SQLite** (开发环境) 和 **PostgreSQL** (生产环境)，通过 `app.core.database` 模块实现无缝切换。
+
+### 1. 实体关系图 (ER Diagram)
+```mermaid
+erDiagram
+    POSITIONS ||--o{ CANDIDATES : "has"
+    CANDIDATES ||--o{ INTERVIEWS : "participates"
+    INTERVIEWS ||--o{ INTERVIEW_QUESTIONS : "contains"
+
+    POSITIONS {
+        int id PK
+        string name "职位名称"
+        text requirements "岗位要求"
+        text responsibilities "岗位职责"
+        int quantity "招聘人数"
+        int status "1:招聘中, 0:停止"
+    }
+
+    CANDIDATES {
+        int id PK
+        int position_id FK
+        string name "姓名"
+        string email "邮箱"
+        blob resume_content "PDF简历文件"
+    }
+
+    INTERVIEWS {
+        int id PK
+        int candidate_id FK
+        string token "唯一访问令牌"
+        int status "0:未开始, 1:题库已生成, 2:进行中, 3:已完成, 4:报告已出"
+        blob report_content "PDF报告文件"
+    }
+
+    INTERVIEW_QUESTIONS {
+        int id PK
+        int interview_id FK
+        text question "题目内容"
+        text score_standard "评分标准(JSON)"
+        blob answer_audio "语音回答(WAV)"
+        text answer_text "语音转写文本"
+        int ai_score "AI评分(0-100)"
+        text ai_evaluation "AI点评"
+    }
+```
+
+### 2. 数据表字典 (Data Dictionary)
+
+#### 2.1 职位表 (`positions`)
+| 字段名 | 类型 (SQLite/PG) | 必填 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | INTEGER / SERIAL | Yes | Auto | 主键 ID |
+| `name` | TEXT / VARCHAR | Yes | - | 职位名称 (e.g., "Python 后端工程师") |
+| `requirements` | TEXT | Yes | - | 岗位要求，用于生成 Prompt |
+| `responsibilities` | TEXT | Yes | - | 岗位职责，用于生成 Prompt |
+| `quantity` | INTEGER | Yes | 1 | 招聘人数 HC |
+| `status` | INTEGER | Yes | 1 | 状态: 1=招聘中, 0=已关闭 |
+| `recruiter` | TEXT / VARCHAR | No | - | 招聘负责人姓名 |
+| `created_at` | INTEGER | Yes | - | 创建时间戳 |
+
+#### 2.2 候选人表 (`candidates`)
+| 字段名 | 类型 (SQLite/PG) | 必填 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | INTEGER / SERIAL | Yes | Auto | 主键 ID |
+| `position_id` | INTEGER | Yes | - | 外键 -> `positions.id` |
+| `name` | TEXT / VARCHAR | Yes | - | 候选人姓名 |
+| `email` | TEXT / VARCHAR | No | - | 候选人邮箱 |
+| `resume_content` | BLOB / BYTEA | No | - | PDF 简历文件的二进制数据 |
+
+#### 2.3 面试表 (`interviews`)
+| 字段名 | 类型 (SQLite/PG) | 必填 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | INTEGER / SERIAL | Yes | Auto | 主键 ID |
+| `candidate_id` | INTEGER | Yes | - | 外键 -> `candidates.id` |
+| `interviewer` | TEXT | No | 'AI面试官' | 面试官名称 |
+| `token` | TEXT | Yes | UUID | 候选人访问面试页面的唯一凭证 |
+| `status` | INTEGER | Yes | 0 | 0:未开始, 1:题库已生成, 2:进行中, 3:已完成, 4:报告已出 |
+| `report_content` | BLOB / BYTEA | No | - | 生成的 PDF 评估报告二进制数据 |
+| `report_path` | TEXT | No | - | 报告文件存储路径 (备份用) |
+
+#### 2.4 面试题目表 (`interview_questions`)
+| 字段名 | 类型 (SQLite/PG) | 必填 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | INTEGER / SERIAL | Yes | Auto | 主键 ID |
+| `interview_id` | INTEGER | Yes | - | 外键 -> `interviews.id` |
+| `question` | TEXT | Yes | - | AI 生成的面试题目 |
+| `score_standard` | TEXT | No | - | AI 生成的评分标准 (JSON 格式字符串) |
+| `answer_audio` | BLOB / BYTEA | No | - | 候选人回答的原始音频 |
+| `answer_text` | TEXT | No | - | Whisper 转写后的文本 |
+| `ai_score` | INTEGER | No | - | AI 对该题的评分 (0-100) |
+| `ai_evaluation` | TEXT | No | - | AI 对该题的详细点评 |
+| `answered_at` | INTEGER | No | - | 回答时间戳 |
 
 ---
 
@@ -272,15 +359,51 @@ erDiagram
 
 ---
 
-## 🗺️ 版本规划 (Roadmap)
+## 🗺️ 版本规划与文档 (Roadmap & Documentation)
 
 ### v1.1 体验优化 (进行中)
-- [ ] **流式响应**: 优化语音识别延迟。
-- [ ] **多模型冗余**: 自动在 GPT-4, Qwen, Claude 间切换。
+- [ ] **流式响应**: 优化语音识别延迟，实现边说边转（Streaming ASR）。
+- [ ] **多模型冗余**: 自动在 GPT-4, Qwen, Claude 间切换，提高可用性。
 
-### v2.0 智能化升级
-- [ ] **数字人交互**: 集成数字人形象，提升面试真实感。
-- [ ] **CV 辅助**: 通过摄像头分析面试者情绪和眼神。
+### v2.0 智能化升级规划 (Intelligent Upgrade)
+
+#### [PRD] 数字人面试官 (Digital Avatar)
+*   **需求背景**: 纯语音交互缺乏临场感，通过数字人形象提升面试体验。
+*   **功能描述**:
+    *   前端展示 2D/3D 虚拟形象 (如 Live2D 或 Unreal Metahuman)。
+    *   数字人嘴型需与 TTS (语音合成) 实时同步 (Lip-sync)。
+    *   支持简单的动作交互 (点头、微笑)。
+*   **技术方案**:
+    *   **前端**: 使用 `PixiJS` 加载 Live2D 模型，或 WebGL 渲染 3D 模型。
+    *   **音频驱动**: 集成 `SadTalker` 或 `Omniverse Audio2Face`，将 TTS 音频流实时转换为面部 Blendshapes 数据。
+    *   **通信**: 使用 WebSocket 替代 HTTP 轮询，传输音频和动作数据。
+
+#### [PRD] 视频情绪分析 (Video Analysis)
+*   **需求背景**: 考察候选人的非语言行为（自信度、压力反应）。
+*   **功能描述**:
+    *   面试过程中请求开启摄像头。
+    *   实时分析候选人面部表情 (快乐、紧张、专注)。
+    *   监测视线方向，判断是否有作弊嫌疑 (如频繁看屏幕外)。
+*   **技术方案**:
+    *   **模型**: 使用 `DeepFace` 或 `OpenCV` 进行人脸检测与表情分类。
+    *   **隐私**: 视频流仅在本地/内存中分析，不进行持久化存储，仅保存分析结果（如"紧张指数: High"）。
+
+### v3.0 企业级架构规划 (Enterprise Architecture)
+
+#### [Tech] 微服务拆分 (Microservices)
+*   **现状**: 当前为单体 Flask 应用，高并发下题目生成 (CPU密集) 会阻塞 Web 服务。
+*   **重构计划**:
+    1.  **Gateway**: Nginx / Kong 负责路由和负载均衡。
+    2.  **Auth Service**: 独立负责用户认证与 Token 签发 (Redis 缓存)。
+    3.  **Core API**: 负责业务 CRUD。
+    4.  **Job Worker**: Celery + Redis 队列，独立处理 LLM 推理和 PDF 生成任务。
+    5.  **ASR Service**: 独立 GPU 容器运行 Whisper，提供 gRPC 接口。
+
+#### [Tech] 多租户 SaaS 支持 (Multi-tenancy)
+*   **需求**: 支持多个公司同时使用，数据物理隔离或逻辑隔离。
+*   **方案**:
+    *   **数据库**: 增加 `tenant_id` 字段，实现行级安全隔离 (Row-Level Security)。
+    *   **存储**: S3 存储桶按租户分目录 `s3://bucket/{tenant_id}/resumes/`。
 
 ---
 
