@@ -1,4 +1,3 @@
-import sqlite3
 import time
 import schedule
 from jinja2 import Environment
@@ -6,22 +5,39 @@ from weasyprint import HTML
 import json
 from datetime import datetime
 from openai import OpenAI
-from dotenv import load_dotenv
 import os
-# 加载环境变量
-load_dotenv()
+
+from config import Config
+from logger import report_logger as logger
+from database import get_db_connection
 
 # 初始化OpenAI客户端
 client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_BASE_URL")
+    api_key=Config.OPENAI_API_KEY,
+    base_url=Config.OPENAI_BASE_URL
 )
-   
+
+# Report storage configuration
+REPORT_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'reports')
+
+def ensure_report_dir():
+    if not os.path.exists(REPORT_BASE_DIR):
+        os.makedirs(REPORT_BASE_DIR)
+
+def get_report_path(interview_id, candidate_name):
+    date_str = datetime.now().strftime('%Y-%m-%d')
+    date_dir = os.path.join(REPORT_BASE_DIR, date_str)
+    if not os.path.exists(date_dir):
+        os.makedirs(date_dir)
+    
+    # Sanitize filename
+    safe_name = "".join([c for c in candidate_name if c.isalpha() or c.isdigit() or c==' ']).strip()
+    filename = f"{interview_id}_{safe_name}_report.pdf"
+    return os.path.join(date_dir, filename)
 
 def fetch_interviews_with_status_3():
     """Fetch all interviews with status = 3 (interview completed)"""
-    conn = sqlite3.connect('interview_system.db')
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -32,10 +48,23 @@ def fetch_interviews_with_status_3():
     conn.close()
     return interviews
 
+def fetch_interview_by_id(interview_id):
+    """Fetch interview by ID"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT * FROM interviews WHERE id = ?
+    ''', (interview_id,))
+    
+    row = cursor.fetchone()
+    interview = dict(row) if row else None
+    conn.close()
+    return interview
+
 def fetch_candidate_info(candidate_id):
     """Fetch candidate information by candidate_id"""
-    conn = sqlite3.connect('interview_system.db')
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -49,8 +78,7 @@ def fetch_candidate_info(candidate_id):
 
 def fetch_position_info(position_id):
     """Fetch position information by position_id"""
-    conn = sqlite3.connect('interview_system.db')
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -64,8 +92,7 @@ def fetch_position_info(position_id):
 
 def fetch_interview_questions(interview_id):
     """Fetch all questions and answers for a specific interview"""
-    conn = sqlite3.connect('interview_system.db')
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -79,15 +106,6 @@ def fetch_interview_questions(interview_id):
 def call_ai_model(candidate_name, position_name, interviewer, questions):
         """
         调用OpenAI API生成面试报告
-        
-        Args:
-            candidate_name: 候选人姓名
-            position_name: 职位名称
-            interviewer: 面试官姓名
-            questions: 面试问题列表，包含问题内容、评分标准和回答
-            
-        Returns:
-            JSON格式的面试评估结果
         """
         # 构建发送给OpenAI的提示内容
         prompt = f"""
@@ -135,7 +153,7 @@ def call_ai_model(candidate_name, position_name, interviewer, questions):
         try:
             # 调用大模型 API
             response = client.chat.completions.create(
-                model="glm-4-plus",
+                model=Config.LLM_MODEL,
                 messages=[
                     {"role": "system", "content": "你是一位专业的面试评估专家，负责评估技术面试表现。"},
                     {"role": "user", "content": prompt}
@@ -160,7 +178,7 @@ def call_ai_model(candidate_name, position_name, interviewer, questions):
             return model_output
             
         except Exception as e:
-            print(f"调用AI模型时出错: {str(e)}")
+            logger.error(f"调用AI模型时出错: {str(e)}")
             # 创建一个模拟的评估结果，以防API调用失败
             # 返回模拟数据
             model_output = {
@@ -168,7 +186,17 @@ def call_ai_model(candidate_name, position_name, interviewer, questions):
                 "position": position_name,
                 "interview_date": datetime.now().strftime("%Y年%m月%d日"),
                 "interviewer": interviewer,
-                "evaluation_result": {}
+                "evaluation_result": {
+                    "question_evaluations": [
+                        {"id": 1, "question": "请介绍一下你的专业背景和技能（Mock）", "score_standard": "清晰度5分", "answer": "我是Mock回答", "score": 8, "comments": "回答尚可"},
+                        {"id": 2, "question": "描述一个技术挑战（Mock）", "score_standard": "复杂度5分", "answer": "Mock回答2", "score": 9, "comments": "不错"}
+                    ],
+                    "technical_score": 85,
+                    "communication_score": 90,
+                    "overall_score": 88,
+                    "comments": "这是一个由于API调用失败而生成的模拟报告。",
+                    "recommendation": "推荐录用(Mock)"
+                }
             }
             return model_output
 
@@ -262,73 +290,112 @@ def generate_pdf_report(model_output):
     
     return pdf_bytes
 
-def update_interview_report(interview_id, report_content):
+def update_interview_report(interview_id, report_content, report_path=None):
     """Save the report content to the interview record and update status to 4"""
-    conn = sqlite3.connect('interview_system.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
-    UPDATE interviews 
-    SET report_content = ?, status = 4 
-    WHERE id = ?
-    ''', (report_content, interview_id))
+    # Check if report_path column exists, if not create it (safe migration)
+    try:
+        cursor.execute("SELECT report_path FROM interviews LIMIT 1")
+    except Exception:
+        # SQLite
+        try:
+             cursor.execute("ALTER TABLE interviews ADD COLUMN report_path TEXT")
+        except:
+             # Postgres or already exists
+             pass
+        conn.commit()
+
+    if Config.DB_TYPE == 'postgres':
+        # psycopg2 handles bytes automatically
+        cursor.execute('''
+        UPDATE interviews 
+        SET report_content = %s, report_path = %s, status = 4 
+        WHERE id = %s
+        ''', (report_content, report_path, interview_id))
+    else:
+        cursor.execute('''
+        UPDATE interviews 
+        SET report_content = ?, report_path = ?, status = 4 
+        WHERE id = ?
+        ''', (report_content, report_path, interview_id))
     
     conn.commit()
     conn.close()
 
+def generate_report_for_interview(interview_id):
+    """Generate report for a specific interview ID"""
+    logger.info(f"Starting report generation for interview ID {interview_id}")
+    try:
+        # 1. Get interview info
+        interview = fetch_interview_by_id(interview_id)
+        if not interview:
+            logger.error(f"Interview {interview_id} not found")
+            return
+            
+        candidate_id = interview['candidate_id']
+        interviewer = interview['interviewer']
+        
+        # 2. Get candidate information
+        candidate = fetch_candidate_info(candidate_id)
+        if not candidate:
+            logger.error(f"Could not find candidate with ID {candidate_id}")
+            return
+        
+        # 3. Get position information
+        position = fetch_position_info(candidate['position_id'])
+        if not position:
+            logger.error(f"Could not find position with ID {candidate['position_id']}")
+            return
+        
+        # 4. Get interview questions and answers
+        questions = fetch_interview_questions(interview_id)
+        
+        # 5. Call AI model to generate report
+        model_output = call_ai_model(
+            candidate['name'],
+            position['name'],
+            interviewer,
+            questions
+        )
+        
+        # Generate PDF report
+        pdf_bytes = generate_pdf_report(model_output)
+        
+        # Save to file
+        report_path = get_report_path(interview_id, candidate['name'])
+        with open(report_path, 'wb') as f:
+            f.write(pdf_bytes)
+        
+        logger.info(f"Report saved to {report_path}")
+        
+        # 6. Save report to database (both blob and path)
+        # 7. Update interview status to 4
+        update_interview_report(interview_id, pdf_bytes, report_path)
+        
+        logger.info(f"Generated report for interview ID {interview_id}, candidate: {candidate['name']}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing interview ID {interview_id}: {str(e)}")
+        return False
+
 def process_pending_reports():
     """Main function to process all interviews with status = 3"""
-    print(f"[{datetime.now()}] Checking for interviews that need reports...")
+    logger.info("Checking for interviews that need reports...")
     
     # 1. Get all interviews with status = 3
     interviews = fetch_interviews_with_status_3()
     
     if not interviews:
-        print("No interviews need reports at this time.")
+        # logger.info("No interviews need reports at this time.")
         return
     
-    print(f"Found {len(interviews)} interviews that need reports.")
+    logger.info(f"Found {len(interviews)} interviews that need reports.")
     
     for interview in interviews:
-        try:
-            interview_id = interview['id']
-            candidate_id = interview['candidate_id']
-            interviewer = interview['interviewer']
-            
-            # 2. Get candidate information
-            candidate = fetch_candidate_info(candidate_id)
-            if not candidate:
-                print(f"Could not find candidate with ID {candidate_id}")
-                continue
-            
-            # 3. Get position information
-            position = fetch_position_info(candidate['position_id'])
-            if not position:
-                print(f"Could not find position with ID {candidate['position_id']}")
-                continue
-            
-            # 4. Get interview questions and answers
-            questions = fetch_interview_questions(interview_id)
-            
-            # 5. Call AI model to generate report
-            model_output = call_ai_model(
-                candidate['name'],
-                position['name'],
-                interviewer,
-                questions
-            )
-            
-            # Generate PDF report
-            pdf_report = generate_pdf_report(model_output)
-            
-            # 6. Save report to database
-            # 7. Update interview status to 4
-            update_interview_report(interview_id, pdf_report)
-            
-            print(f"Generated report for interview ID {interview_id}, candidate: {candidate['name']}")
-            
-        except Exception as e:
-            print(f"Error processing interview ID {interview.get('id', 'unknown')}: {str(e)}")
+        generate_report_for_interview(interview['id'])
 
 def run_scheduler():
     """Set up the scheduler to run the task every 5 minutes"""
@@ -344,5 +411,6 @@ def run_scheduler():
         time.sleep(1)
 
 if __name__ == "__main__":
-    print("Starting interview report generation service...")
-    run_scheduler() 
+    ensure_report_dir()
+    logger.info("Starting interview report generation service...")
+    run_scheduler()

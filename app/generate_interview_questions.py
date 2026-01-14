@@ -1,4 +1,3 @@
-import sqlite3
 import time
 import schedule
 import threading
@@ -7,16 +6,16 @@ import io
 from datetime import datetime
 from openai import OpenAI
 import PyPDF2
-from dotenv import load_dotenv
 import os
 
-# 加载环境变量
-load_dotenv()
+from config import Config
+from logger import question_logger as logger
+from database import get_db_connection
 
 # 初始化OpenAI客户端
 client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_BASE_URL")
+    api_key=Config.OPENAI_API_KEY,
+    base_url=Config.OPENAI_BASE_URL
 )
     
 # 从PDF二进制数据中提取文本内容
@@ -44,7 +43,7 @@ def extract_text_from_pdf(pdf_content):
             
         return text
     except Exception as e:
-        print(f"PDF文本提取错误: {str(e)}")
+        logger.error(f"PDF文本提取错误: {str(e)}")
         # 如果pdf解析失败，尝试作为纯文本处理
         try:
             if isinstance(pdf_content, bytes):
@@ -52,10 +51,6 @@ def extract_text_from_pdf(pdf_content):
             return str(pdf_content)
         except:
             return "无法解析简历内容"
-
-# 连接到SQLite数据库
-def get_db_connection():
-    return sqlite3.connect('interview_system.db')
 
 # 获取未开始的面试列表
 def get_pending_interviews():
@@ -111,7 +106,7 @@ def generate_questions(resume_content, position_name, requirements, responsibili
     except:
         resume_text = "无法解析简历内容"
     
-    print("resume_text:", resume_text)
+    # logger.debug(f"resume_text: {resume_text[:100]}...")
 
     # 返回json格式参考
     json_format = [
@@ -125,7 +120,7 @@ def generate_questions(resume_content, position_name, requirements, responsibili
     try:
         response = client.chat.completions.create(
             #model="gpt-4", # 或其他适合的模型
-            model="glm-4-plus",
+            model=Config.LLM_MODEL,
             messages=[
                 {"role": "system", "content": "你是一名专业的招聘面试官，请根据岗位要求和候选人简历生成5个针对性的技术面试问题，每个问题附带评分标准,返回标准的json格式。"},
                 {"role": "user", "content": f"岗位名称: {position_name}\n岗位要求: {requirements}\n岗位职责: {responsibilities}\n候选人简历: {resume_text}\n\n请生成10个面试问题和评分标准，JSON格式参考 {json_format} ，每个问题满分10分。"}
@@ -137,12 +132,18 @@ def generate_questions(resume_content, position_name, requirements, responsibili
         # 解析响应内容
         questions_json = response.choices[0].message.content
         questions = json.loads(questions_json)
-        print("questions:", questions)
+        # logger.info(f"Generated questions: {questions}")
         
         return questions
 
     except Exception as e:
-        print(f"生成面试问题时出错: {str(e)}")
+        logger.error(f"生成面试问题时出错: {str(e)}")
+        logger.info("使用Mock数据作为回退...")
+        return [
+            {"question": "请介绍一下你的专业背景和技能（Mock）", "score_standard": "清晰度5分，相关性5分，深度5分"},
+            {"question": "你认为自己最适合这个岗位的原因是什么？（Mock）", "score_standard": "匹配度5分，自我认知5分，表达5分"},
+            {"question": "描述一个你解决过的技术挑战（Mock）", "score_standard": "复杂度5分，解决方案5分，结果5分"}
+        ]
  
 
 # 将生成的问题保存到数据库
@@ -171,16 +172,16 @@ def save_questions(interview_id, questions):
 
 # 主处理函数
 def process_pending_interviews():
-    print(f"[{datetime.now()}] 开始处理未开始的面试...")
+    logger.info("开始处理未开始的面试...")
     
     # 获取所有未开始的面试
     pending_interviews = get_pending_interviews()
     
     if not pending_interviews:
-        print("没有未开始的面试需要处理")
+        # logger.info("没有未开始的面试需要处理")
         return
     
-    print(f"找到 {len(pending_interviews)} 个待处理的面试")
+    logger.info(f"找到 {len(pending_interviews)} 个待处理的面试")
     
     for interview in pending_interviews:
         interview_id, candidate_id, interviewer, start_time = interview
@@ -188,7 +189,7 @@ def process_pending_interviews():
         # 获取候选人信息
         candidate = get_candidate_info(candidate_id)
         if not candidate:
-            print(f"无法找到候选人ID: {candidate_id}的信息")
+            logger.error(f"无法找到候选人ID: {candidate_id}的信息")
             continue
         
         candidate_id, candidate_name, candidate_email, resume_content, position_id = candidate
@@ -196,12 +197,12 @@ def process_pending_interviews():
         # 获取岗位信息
         position = get_position_info(position_id)
         if not position:
-            print(f"无法找到岗位ID: {position_id}的信息")
+            logger.error(f"无法找到岗位ID: {position_id}的信息")
             continue
         
         position_id, position_name, requirements, responsibilities = position
         
-        print(f"为面试ID: {interview_id}, 候选人: {candidate_name}, 岗位: {position_name} 生成面试问题")
+        logger.info(f"为面试ID: {interview_id}, 候选人: {candidate_name}, 岗位: {position_name} 生成面试问题")
         
         # 生成面试问题
         questions = generate_questions(resume_content, position_name, requirements, responsibilities)
@@ -210,7 +211,7 @@ def process_pending_interviews():
         save_questions(interview_id, questions)
 
         
-        print(f"已为面试ID: {interview_id} 成功生成 {len(questions)} 个问题")
+        logger.info(f"已为面试ID: {interview_id} 成功生成 {len(questions)} 个问题")
 
 # 定时任务
 def run_scheduler():
@@ -231,11 +232,11 @@ if __name__ == "__main__":
     scheduler_thread.daemon = True
     scheduler_thread.start()
     
-    print("面试问题生成定时任务已启动，每5分钟执行一次")
+    logger.info("面试问题生成定时任务已启动，每5分钟执行一次")
     
     try:
         # 保持主线程运行
         while True:
             time.sleep(60)
     except KeyboardInterrupt:
-        print("程序已停止") 
+        logger.info("程序已停止") 

@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Interview System
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/project-interview/app
+ExecStart=/root/project-interview/app/start.sh
+Restart=always
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

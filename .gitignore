@@ -1,5 +1,11 @@
 # Environments
 .env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
 # Python
 __pycache__/
@@ -7,9 +13,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
-develop/
+develop-eggs/
 dist/
 downloads/
 eggs/
@@ -20,17 +25,37 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Nginx SSL
-nginx/ssl/*.key
-nginx/ssl/*.pem
+# Logs
+logs/
+*.log
 
-# OS
+# Databases
+*.db
+*.sqlite3
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# VS Code
+# IDEs
+.idea/
 .vscode/
+*.swp
+*.swo
+
+# Project specific
+app/static/audio/*
+app/static/resumes/*
+!app/static/audio/.gitkeep
+!app/static/resumes/.gitkeep
