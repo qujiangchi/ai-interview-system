@@ -136,37 +136,29 @@ graph TD
 - **深度评语**: AI 会指出回答中的闪光点和逻辑漏洞。
 - **数据库同步**: 评分结果实时写入 `interview_questions` 表，HR 可在后台实时监控面试进度。
 
-### 5. 自动化报告引擎
-- **工作流**:
-  1. **数据聚合**: 面试结束后，系统自动拉取所有问答对（Q&A）、AI 评分（Scores）和 AI 点评（Evaluations）。
-  2. **综合分析**: 将聚合数据再次输入 LLM，请求生成"技术能力"、"沟通能力"、"综合素质"维度的总结性评价，并给出"录用建议"。
-  3. **数据可视化**: 使用 `Matplotlib` (规划中) 或 HTML/CSS 绘制雷达图，直观展示候选人能力分布。
-  4. **PDF 渲染**: 使用 `Jinja2` 渲染 HTML 模板，最后通过 `WeasyPrint` 生成符合 A4 打印标准的 PDF 文件。
+### 5. 自动化报告引擎 (Jinja2 & WeasyPrint)
+本系统采用 **"Prompt -> JSON -> HTML -> PDF"** 的流水线技术生成报告。
 
-```mermaid
-graph TD
-    subgraph Data_Collection [1. 数据采集]
-        Q1[问题1得分] --> Aggregator
-        Q2[问题2得分] --> Aggregator
-        QN[问题N得分] --> Aggregator
-        Comments[单题点评] --> Aggregator
-    end
+#### 5.1 提示词工程 (Prompt Engineering)
+为了从 LLM 获取结构化、高质量的评价，我们设计了复杂的 System Prompt：
+> **System**: "你是一位资深的面试评估专家，请根据以下问答记录，生成一份详尽的面试评估报告..."
+> **User**: (传入所有问答对数据)
+> **Constraint**: "请以 JSON 格式返回，必须包含 `technical_score`, `communication_score`, `strengths`, `weaknesses` 等字段。"
 
-    Aggregator --> |JSON Payload| LLM_Summary[LLM: 综合分析]
-    
-    subgraph Analysis [2. 深度分析]
-        LLM_Summary --> Tech[技术能力评价]
-        LLM_Summary --> Comm[沟通能力评价]
-        LLM_Summary --> Suggestion[录用建议]
-    end
-
-    subgraph Generation [3. 报告生成]
-        Tech & Comm & Suggestion --> Template[Jinja2 HTML模板]
-        Radar[能力雷达图] --> Template
-        Template --> |HTML| WeasyPrint
-        WeasyPrint --> |PDF| Final_Report[最终评估报告]
-    end
+#### 5.2 动态模板渲染 (Jinja2)
+系统预置了专业的 HTML/CSS 报告模板 (`app/services/report_service.py`)，利用 **Jinja2** 模板引擎将 LLM 返回的 JSON 数据动态注入到 HTML 中。
+```python
+# 核心代码片段
+template = env.from_string(html_template)
+rendered_html = template.render(
+    candidate_name=data['name'],
+    scores=data['scores'],
+    evaluation=data['evaluation']
+)
 ```
+
+#### 5.3 PDF 生成 (WeasyPrint)
+最后，使用 **WeasyPrint** 将渲染好的 HTML 转换为 PDF。相比于 ReportLab 等底层库，WeasyPrint 支持现代 CSS 标准（如 Flexbox, Grid），使得设计精美的报告样式变得非常简单。
 
 ---
 
@@ -174,46 +166,6 @@ graph TD
 
 ### 1. 语音识别 (Whisper)
 - **原理**: 基于transformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
-```mermaid
-erDiagram
-    POSITIONS ||--o{ CANDIDATES : "has"
-    CANDIDATES ||--o{ INTERVIEWS : "缺articipates"
-    INTERVIEWS ||--o{ INTERVIEW_QUESTIONS : "contain*"
-
-    POSITIONS {
-        *n: d PK
-        strig name "职位名称"
-        text requirement"岗位要求"
-       text responsibilities "岗位职"
-        int quantity "招聘数"
-    }
-
-    ANDIDATES{
-        i*t i高 PK
-        精nt position_i度 FK
-        s*ring nam: "姓名"
-         tring背email鲁"邮箱"
-       blobresume_content"文件"
-    }
-
-    INTERVIEWS {
-        int id PK
-         nt ca*dida*多_id FK
-        st语*ng tok*n "访问令牌"
-       9int翻。":未开始, 1:已生成题目, 2:进行中, 3:已完成, :报告已生成"
-        string report_path "PDF报告路径"
-    }
-
-    INTERVIEW_QUESTIONS {
-        int idPK
-        int  **资源消耗**:id FK
-        text  `large`约"0G"
-        blob answer_audio "语音 V"
-        text answer_text "R字ba"
-       `int ai_score运"行较评分"
-        text ai_evaluation慢"AI点。"
-    }
-```
 - **使用建议**:
   - **开发环境**: 推荐使用 `tiny` 或 `base` 模型，CPU 即可流畅运行。
   - **生产环境**: 推荐使用 `small` 或 `medium` 模型配合 GPU (CUDA)，平衡精度与延迟。
