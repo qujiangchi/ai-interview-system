@@ -25,22 +25,22 @@
 
 ```mermaid
 graph TD
-    User[候选人/管理员] --> API[Flask REST API]
-    API --> Service[业务逻辑层]
-    Service --> DB[(SQLite/PostgreSQL)]
-    Service --> LLM[LLM 服务 (OpenAI/Qwen)]
-    Service --> Whisper[语音识别服务]
+    User["候选人/管理员"] --> API["Flask REST API"]
+    API --> Service["业务逻辑层"]
+    Service --> DB[("SQLite/PostgreSQL")]
+    Service --> LLM["LLM 服务 (OpenAI/Qwen)"]
+    Service --> Whisper["语音识别服务"]
     
-    subgraph Core [核心模块]
-        Config[配置管理]
-        Logger[日志系统]
-        Auth[认证授权]
+    subgraph Core ["核心模块"]
+        Config["配置管理"]
+        Logger["日志系统"]
+        Auth["认证授权"]
     end
     
-    subgraph AsyncWorker [后台任务]
-        QGen[题目生成器]
-        ReportGen[报告生成器]
-        Evaluator[实时评分器]
+    subgraph AsyncWorker ["后台任务"]
+        QGen["题目生成器"]
+        ReportGen["报告生成器"]
+        Evaluator["实时评分器"]
     end
     
     API -.-> AsyncWorker
@@ -114,9 +114,7 @@ graph TD
 python tests/test_flow.py
 ```
 
-## 🗺️ 未来规划 (Roadmap)
-
-
+## 🗺️ 下一步计划 (Roadmap)
 ### Phase 1: 体验增强 (Current)
 - [x] 核心面试流程闭环
 - [x] PDF 报告生成
