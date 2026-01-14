@@ -53,6 +53,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+.trae/
 
 # Project specific
 app/static/audio/*
