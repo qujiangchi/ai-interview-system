@@ -137,9 +137,36 @@ graph TD
 - **数据库同步**: 评分结果实时写入 `interview_questions` 表，HR 可在后台实时监控面试进度。
 
 ### 5. 自动化报告引擎
-- **数据聚合**: 汇总所有问题的得分、评语、录音文本。
-- **Jinja2 模板**: 使用 HTML 模板定义报告样式，支持动态填充。
-- **WeasyPrint**: 将渲染后的 HTML 转换为生产级的 PDF 文件，支持 CSS 打印标准。
+- **工作流**:
+  1. **数据聚合**: 面试结束后，系统自动拉取所有问答对（Q&A）、AI 评分（Scores）和 AI 点评（Evaluations）。
+  2. **综合分析**: 将聚合数据再次输入 LLM，请求生成"技术能力"、"沟通能力"、"综合素质"维度的总结性评价，并给出"录用建议"。
+  3. **数据可视化**: 使用 `Matplotlib` (规划中) 或 HTML/CSS 绘制雷达图，直观展示候选人能力分布。
+  4. **PDF 渲染**: 使用 `Jinja2` 渲染 HTML 模板，最后通过 `WeasyPrint` 生成符合 A4 打印标准的 PDF 文件。
+
+```mermaid
+graph TD
+    subgraph Data_Collection [1. 数据采集]
+        Q1[问题1得分] --> Aggregator
+        Q2[问题2得分] --> Aggregator
+        QN[问题N得分] --> Aggregator
+        Comments[单题点评] --> Aggregator
+    end
+
+    Aggregator --> |JSON Payload| LLM_Summary[LLM: 综合分析]
+    
+    subgraph Analysis [2. 深度分析]
+        LLM_Summary --> Tech[技术能力评价]
+        LLM_Summary --> Comm[沟通能力评价]
+        LLM_Summary --> Suggestion[录用建议]
+    end
+
+    subgraph Generation [3. 报告生成]
+        Tech & Comm & Suggestion --> Template[Jinja2 HTML模板]
+        Radar[能力雷达图] --> Template
+        Template --> |HTML| WeasyPrint
+        WeasyPrint --> |PDF| Final_Report[最终评估报告]
+    end
+```
 
 ---
 
