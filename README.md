@@ -116,7 +116,6 @@ python tests/test_flow.py
 
 ## 🗺️ 未来规划 (Roadmap)
 
-我们要将此项目打造为开源领域的明星项目，持续迭代优化。
 
 ### Phase 1: 体验增强 (Current)
 - [x] 核心面试流程闭环
