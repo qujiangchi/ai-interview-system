@@ -165,10 +165,24 @@ rendered_html = template.render(
 ## 🧠 模型选择与部署指南
 
 ### 1. 语音识别 (Whisper)
-- **原理**: 基于transformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
+- **核心原理**:
+  Whisper 是一个基于 **Transformer** 的序列到序列 (Seq2Seq) 模型。它将音频频谱图 (Log-Mel Spectrogram) 划分为 30 秒的片段，通过 Encoder 编码音频特征，再由 Decoder 预测文本 Token。
+  
+  ```mermaid
+  graph LR
+      Audio[原始音频] -->|预处理| Spectrogram[Log-Mel 频谱图]
+      Spectrogram --> Encoder[Transformer Encoder]
+      Encoder -->|Cross Attention| Decoder[Transformer Decoder]
+      Decoder -->|Autoregressive| Tokens[文本 Tokens]
+      Tokens --> Text[最终文本]
+  ```
+
+- **多任务学习**:
+  模型在训练时使用了特殊的 Token (如 `<|transcribe|>`, `<|translate|>`)，使其不仅能做语音识别 (ASR)，还能直接进行语音翻译 (Translation) 和语言检测 (Language Identification)。
+
 - **使用建议**:
-  - **开发环境**: 推荐使用 `tiny` 或 `base` 模型，CPU 即可流畅运行。
-  - **生产环境**: 推荐使用 `small` 或 `medium` 模型配合 GPU (CUDA)，平衡精度与延迟。
+  - **开发环境**: 推荐使用 `tiny` 或 `base` 模型，显存占用极低 (<1GB)，CPU 即可流畅运行。
+  - **生产环境**: 推荐使用 `small` 或 `medium` 模型配合 GPU (CUDA)，平衡精度与延迟。对于中文场景，`medium` 模型的词错率 (WER) 显著低于 `small`。
   - **配置方法**: 在 `.env` 中设置 `WHISPER_MODEL_SIZE=base`。
 
 ### 2. 大语言模型 (LLM)
