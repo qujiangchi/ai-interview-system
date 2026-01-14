@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_cors import CORS
-from config import Config
+from app.core.config import Config
 
 def create_app():
     app = Flask(__name__, static_folder=Config.STATIC_FOLDER, static_url_path='/static')

@@ -1,9 +1,12 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sqlite3
 import psycopg2
 from psycopg2.extras import execute_values
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import os
-from config import Config
+from app.core.config import Config
 
 # PostgreSQL 配置
 PG_HOST = Config.PG_HOST

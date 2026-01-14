@@ -1,8 +1,20 @@
+"""
+Admin API Module
+管理员API模块
+
+此模块处理管理员相关的操作，包括：
+- 职位管理 (CRUD)
+- 候选人管理 (CRUD)
+- 面试管理 (CRUD)
+- 简历下载
+- 报告查看
+"""
+
 from flask import Blueprint, jsonify, request, send_file
-from app.database import get_db_connection
+from app.core.database import get_db_connection
 from app.utils.auth_middleware import token_required
 from app.utils.helpers import generate_token
-from app.config import Config
+from app.core.config import Config
 import time
 import os
 import sqlite3
@@ -12,10 +24,12 @@ import logging
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint('admin', __name__)
 
-# 岗位管理
+# === 职位管理 (Position Management) ===
+
 @admin_bp.route('/positions', methods=['GET'])
 @token_required
 def get_positions():
+    """获取所有职位列表"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -30,6 +44,7 @@ def get_positions():
 @admin_bp.route('/positions', methods=['POST'])
 @token_required
 def create_position():
+    """创建新职位"""
     try:
         data = request.json
         conn = get_db_connection()
@@ -50,6 +65,7 @@ def create_position():
 @admin_bp.route('/positions/<int:id>', methods=['PUT'])
 @token_required
 def update_position(id):
+    """更新职位信息"""
     try:
         data = request.json
         conn = get_db_connection()
@@ -68,6 +84,7 @@ def update_position(id):
 @admin_bp.route('/positions/<int:id>', methods=['DELETE'])
 @token_required
 def delete_position(id):
+    """删除职位"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -79,10 +96,12 @@ def delete_position(id):
         logger.error(f"Error deleting position: {e}")
         return jsonify({'error': str(e)}), 500
 
-# 候选人管理
+# === 候选人管理 (Candidate Management) ===
+
 @admin_bp.route('/candidates', methods=['GET'])
 @token_required
 def get_candidates():
+    """获取候选人列表"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -97,18 +116,13 @@ def get_candidates():
 @admin_bp.route('/candidates', methods=['POST'])
 @token_required
 def create_candidate():
+    """创建候选人（包含简历上传）"""
     try:
         data = request.form
         
         resume_content = request.files['resume_content'].read() if 'resume_content' in request.files else None
-        # For Postgres, we might need to handle binary differently if not using the adapter correctly,
-        # but the adapter seems to handle bytes -> bytes
         
-        # If using postgres adapter with psycopg2, bytes are automatically adapted to BYTEA.
-        # However, for sqlite3.Binary wrapper is needed for SQLite.
-        # The adapter code in database.py doesn't seem to unwrap sqlite3.Binary if passed to it.
-        # So we should be careful.
-        
+        # 数据库适配处理：SQLite 需要 Binary 包装，Postgres 不需要
         if Config.DB_TYPE == 'postgres':
              resume_val = resume_content
         else:
@@ -130,6 +144,7 @@ def create_candidate():
 @admin_bp.route('/candidates/<int:id>/resume', methods=['GET'])
 @token_required
 def download_resume(id):
+    """下载候选人简历"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -139,7 +154,7 @@ def download_resume(id):
         
         if resume and resume['resume_content']:
             content = resume['resume_content']
-            # If it's memoryview (Postgres), convert to bytes
+            # 如果是 memoryview (Postgres)，转换为 bytes
             if isinstance(content, memoryview):
                 content = bytes(content)
                 
@@ -152,6 +167,7 @@ def download_resume(id):
 @admin_bp.route('/candidates/<int:id>', methods=['DELETE'])
 @token_required
 def delete_candidate(id):
+    """删除候选人"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -163,10 +179,12 @@ def delete_candidate(id):
         logger.error(f"Error deleting candidate: {e}")
         return jsonify({'error': str(e)}), 500
 
-# 面试管理
+# === 面试管理 (Interview Management) ===
+
 @admin_bp.route('/interviews', methods=['GET'])
 @token_required
 def get_interviews():
+    """获取所有面试记录"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -181,6 +199,7 @@ def get_interviews():
 @admin_bp.route('/interviews', methods=['POST'])
 @token_required
 def create_interview():
+    """创建新的面试安排"""
     try:
         data = request.json
         data['token'] = generate_token()
@@ -200,14 +219,10 @@ def create_interview():
 @admin_bp.route('/interviews/<int:id>', methods=['PUT'])
 @token_required
 def update_interview(id):
+    """更新面试信息"""
     try:
         data = request.json
-        # Check if token needs to be regenerated or kept
-        # Usually we don't change token on update unless specified
-        # But existing code regenerated it. Let's keep existing behavior or improve.
-        # Improved: only generate if not exists or requested? 
-        # Existing code: data['token'] = generate_token()
-        
+        # 重新生成 Token（如果需要保持 Token 不变，可以修改此处逻辑）
         new_token = generate_token()
         
         conn = get_db_connection()
@@ -226,6 +241,7 @@ def update_interview(id):
 @admin_bp.route('/interviews/<int:id>', methods=['DELETE'])
 @token_required
 def delete_interview(id):
+    """删除面试记录（级联删除相关问题）"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -246,16 +262,26 @@ def delete_interview(id):
 @admin_bp.route('/interviews/<int:interview_id>/report', methods=['GET'])
 @token_required
 def download_interview_report(interview_id):
+    """
+    下载面试评估报告
+    
+    Query Params:
+        preview (bool): 如果为 true，则在浏览器预览；否则作为附件下载。
+    """
+    return _download_interview_report_logic(interview_id)
+
+def _download_interview_report_logic(interview_id):
+    """下载报告的核心逻辑"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 获取面试信息及报告内容
-        # Check if report_path exists in schema first
+        # 尝试获取报告路径和内容
+        # 兼容旧表结构（如果没有 report_path 字段）
         try:
             cursor.execute('''SELECT id, candidate_id, report_content, report_path FROM interviews WHERE id = ? ''', (interview_id, ))
-        except:
-            # Fallback for old schema
+        except Exception:
+            conn.rollback() # Postgres 需要回滚事务
             cursor.execute('''SELECT id, candidate_id, report_content FROM interviews WHERE id = ? ''', (interview_id, ))
             
         interview = cursor.fetchone()
@@ -265,16 +291,14 @@ def download_interview_report(interview_id):
         if not interview:
             return jsonify({"error": "面试不存在"}), 404
         
-        # Determine file source
         file_stream = None
         file_path = None
         
-        # 1. Try to read from file system if path exists
+        # 1. 优先尝试从文件系统读取 (如果 report_path 存在且文件存在)
         if 'report_path' in interview.keys() and interview['report_path'] and os.path.exists(interview['report_path']):
             file_path = interview['report_path']
-            # We will use send_file with path
         
-        # 2. If not, try to read from BLOB
+        # 2. 如果文件不存在，尝试从 BLOB 读取
         elif interview['report_content']:
             content = interview['report_content']
             if isinstance(content, memoryview):
@@ -284,10 +308,12 @@ def download_interview_report(interview_id):
             return jsonify({"error": "面试报告尚未生成"}), 404
             
         # 生成文件名
-        file_name = f"面试报告_{interview['id']}.pdf"
+        file_name = f"interview_report_{interview['id']}.pdf"
         
-        # Check if preview is requested
-        as_attachment = request.args.get('preview') != 'true'
+        # 检查是否为预览模式
+        as_attachment = True
+        if request.args.get('preview') == 'true':
+            as_attachment = False
         
         if file_path:
             return send_file(

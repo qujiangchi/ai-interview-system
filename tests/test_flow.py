@@ -1,23 +1,19 @@
-
 import requests
 import json
 import time
 import os
 import sys
-import sqlite3
-from datetime import datetime
 
-# 添加当前目录到 path 以便导入模块
-sys.path.append(os.getcwd())
+# 添加项目根目录到 path 以便导入模块
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 尝试导入生成脚本
 try:
-    import generate_interview_questions
-    import generate_interview_reports
+    from scripts import generate_interview_questions
+    from scripts import generate_interview_reports
     print("成功导入生成脚本模块")
 except ImportError as e:
     print(f"导入生成脚本失败: {e}")
-    print("请确保在 app 目录下运行此脚本")
     sys.exit(1)
 
 BASE_URL = "http://127.0.0.1:8000"
@@ -27,12 +23,7 @@ def create_dummy_files():
     with open("dummy_resume.pdf", "wb") as f:
         f.write(b"%PDF-1.4\n%...\nDummy PDF Content")
     
-    # 创建 dummy wav (这只是一个文本文件伪装的，whisper 可能会报错，但我们主要测试流程)
-    # 为了让 whisper 不报错，最好弄个真正的 wav 头，或者指望 whisper 处理错误
-    # 或者我们可以 mock 掉 server.py 里的 whisper 调用？
-    # 不，我们希望测试完整流程。
-    # 既然 server.py 处理音频时会尝试转录，如果失败可能会报错。
-    # 让我们创建一个极简的 wav 文件头
+    # 创建 dummy wav
     import wave
     with wave.open("dummy_audio.wav", "wb") as wav_file:
         wav_file.setnchannels(1)
@@ -45,11 +36,36 @@ def cleanup_files():
         os.remove("dummy_resume.pdf")
     if os.path.exists("dummy_audio.wav"):
         os.remove("dummy_audio.wav")
+    if os.path.exists("report_*.pdf"):
+        os.system("rm report_*.pdf")
 
 def test_flow():
     print("=== 开始测试流程 ===")
     create_dummy_files()
     
+    # 0. 认证
+    print("\n0. 认证...")
+    # Init admin
+    try:
+        requests.post(f"{BASE_URL}/api/auth/init", json={
+            "username": "admin_test", "password": "password", "secret": "init_secret_key"
+        })
+    except:
+        pass # Ignore if already exists
+
+    # Login
+    resp = requests.post(f"{BASE_URL}/api/auth/login", json={
+        "username": "admin_test", "password": "password"
+    })
+    
+    if resp.status_code != 200:
+        print(f"登录失败: {resp.text}")
+        return
+        
+    token = resp.json()['token']
+    headers = {'Authorization': f'Bearer {token}'}
+    print("登录成功")
+
     # 1. 创建职位
     print("\n1. 创建职位...")
     position_data = {
@@ -57,16 +73,19 @@ def test_flow():
         "requirements": "熟悉Python, 自动化测试",
         "responsibilities": "编写测试脚本",
         "quantity": 1,
-        "status": "招聘中",
+        "status": 1, # 1=招聘中
         "recruiter": "TestBot"
     }
-    resp = requests.post(f"{BASE_URL}/api/positions", json=position_data)
+    resp = requests.post(f"{BASE_URL}/api/admin/positions", json=position_data, headers=headers)
     print(f"创建职位响应: {resp.status_code}, {resp.text}")
     assert resp.status_code == 200
     
     # 获取职位 ID
-    resp = requests.get(f"{BASE_URL}/api/positions")
+    resp = requests.get(f"{BASE_URL}/api/admin/positions", headers=headers)
     positions = resp.json()
+    if not positions:
+        print("没有找到职位")
+        return
     position_id = positions[-1]['id']
     print(f"职位 ID: {position_id}")
     
@@ -80,12 +99,13 @@ def test_flow():
         'name': '张三测试',
         'email': 'test@example.com'
     }
-    resp = requests.post(f"{BASE_URL}/api/candidates", data=data, files=files)
+    # requests does not support headers + files easily if Content-Type is needed, but here it should be fine
+    resp = requests.post(f"{BASE_URL}/api/admin/candidates", data=data, files=files, headers=headers)
     print(f"创建候选人响应: {resp.status_code}, {resp.text}")
     assert resp.status_code == 200
     
     # 获取候选人 ID
-    resp = requests.get(f"{BASE_URL}/api/candidates")
+    resp = requests.get(f"{BASE_URL}/api/admin/candidates", headers=headers)
     candidates = resp.json()
     candidate_id = candidates[-1]['id']
     print(f"候选人 ID: {candidate_id}")
@@ -99,12 +119,12 @@ def test_flow():
         'status': 0, # 未开始
         'is_passed': 0
     }
-    resp = requests.post(f"{BASE_URL}/api/interviews", json=interview_data)
+    resp = requests.post(f"{BASE_URL}/api/admin/interviews", json=interview_data, headers=headers)
     print(f"创建面试响应: {resp.status_code}, {resp.text}")
     assert resp.status_code == 200
     
     # 获取面试信息和 Token
-    resp = requests.get(f"{BASE_URL}/api/interviews")
+    resp = requests.get(f"{BASE_URL}/api/admin/interviews", headers=headers)
     interviews = resp.json()
     interview = interviews[-1]
     interview_id = interview['id']
@@ -113,10 +133,11 @@ def test_flow():
     
     # 4. 触发生成问题
     print("\n4. 触发生成问题...")
-    # 手动调用生成函数
+    # 手动调用生成函数 (Server side logic, but called from script)
+    # Since we are running this script locally with access to DB, this works.
     generate_interview_questions.process_pending_interviews()
     
-    # 检查状态是否更新
+    # 检查状态是否更新 (API Access via Token, no Admin Header needed)
     time.sleep(1)
     resp = requests.get(f"{BASE_URL}/api/interview/{token}/info")
     print(f"面试信息: {resp.json()}")
@@ -156,11 +177,10 @@ def test_flow():
     
     generate_interview_reports.process_pending_reports()
     
-    # 7. 下载报告
+    # 7. 下载报告 (Need Admin Header)
     print("\n7. 下载报告...")
     # 状态应该是 4 (报告已生成)
-    # API 没有直接暴露 status，但我们可以尝试下载报告
-    resp = requests.get(f"{BASE_URL}/api/interviews/{interview_id}/report")
+    resp = requests.get(f"{BASE_URL}/api/admin/interviews/{interview_id}/report", headers=headers)
     if resp.status_code == 200:
         print("报告下载成功")
         with open(f"report_{interview_id}.pdf", "wb") as f:

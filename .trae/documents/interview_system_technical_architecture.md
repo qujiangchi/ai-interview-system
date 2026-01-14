@@ -30,52 +30,62 @@ graph TD
 
 ## 2. 技术栈描述
 
-- **前端框架**: Vue3@3.4 + Element Plus@2.4 + Vite@5.0
-- **初始化工具**: vite-init
-- **后端框架**: Flask@2.3 + Python@3.11
-- **数据库**: PostgreSQL@15 + SQLAlchemy@2.0
-- **缓存**: Redis@7.2
-- **文件存储**: MinIO@latest
-- **视频服务**: WebRTC + Socket.io
+* **前端框架**: Vue3\@3.4 + Element Plus\@2.4 + Vite\@5.0
+
+* **初始化工具**: vite-init
+
+* **后端框架**: Flask\@2.3 + Python\@3.11
+
+* **数据库**: PostgreSQL\@15 + SQLAlchemy\@2.0
+
+* **缓存**: Redis\@7.2
+
+* **文件存储**: MinIO\@latest
+
+* **视频服务**: WebRTC + Socket.io
 
 ## 3. 路由定义
 
-| 路由路径 | 页面用途 |
-|----------|----------|
-| /login | 用户登录页面，支持多角色登录 |
-| /register | 用户注册页面，角色选择和验证 |
-| /dashboard | 管理员仪表板，数据概览和分析 |
-| /interviews | 面试管理页面，候选人列表和操作 |
-| /interview/:id | 面试详情页面，视频面试客户端 |
-| /candidate | 候选人中心，简历和面试管理 |
-| /profile | 用户个人中心，信息设置 |
-| /admin/users | 用户管理页面，仅限管理员 |
-| /admin/settings | 系统设置页面，配置管理 |
+| 路由路径            | 页面用途            |
+| --------------- | --------------- |
+| /login          | 用户登录页面，支持多角色登录  |
+| /register       | 用户注册页面，角色选择和验证  |
+| /dashboard      | 管理员仪表板，数据概览和分析  |
+| /interviews     | 面试管理页面，候选人列表和操作 |
+| /interview/:id  | 面试详情页面，视频面试客户端  |
+| /candidate      | 候选人中心，简历和面试管理   |
+| /profile        | 用户个人中心，信息设置     |
+| /admin/users    | 用户管理页面，仅限管理员    |
+| /admin/settings | 系统设置页面，配置管理     |
 
 ## 4. API定义
 
 ### 4.1 认证相关API
 
 **用户登录**
+
 ```
 POST /api/auth/login
 ```
 
 请求参数：
-| 参数名 | 类型 | 必填 | 描述 |
-|--------|------|------|------|
-| email | string | 是 | 用户邮箱 |
-| password | string | 是 | 登录密码 |
-| role | string | 是 | 用户角色(admin/interviewer/candidate) |
+
+| 参数名      | 类型     | 必填 | 描述                                |
+| -------- | ------ | -- | --------------------------------- |
+| email    | string | 是  | 用户邮箱                              |
+| password | string | 是  | 登录密码                              |
+| role     | string | 是  | 用户角色(admin/interviewer/candidate) |
 
 响应参数：
-| 参数名 | 类型 | 描述 |
-|--------|------|------|
-| token | string | JWT访问令牌 |
-| refresh_token | string | 刷新令牌 |
-| user_info | object | 用户信息对象 |
+
+| 参数名            | 类型     | 描述      |
+| -------------- | ------ | ------- |
+| token          | string | JWT访问令牌 |
+| refresh\_token | string | 刷新令牌    |
+| user\_info     | object | 用户信息对象  |
 
 请求示例：
+
 ```json
 {
   "email": "admin@example.com",
@@ -85,11 +95,13 @@ POST /api/auth/login
 ```
 
 **用户注册**
+
 ```
 POST /api/auth/register
 ```
 
 **令牌刷新**
+
 ```
 POST /api/auth/refresh
 ```
@@ -97,29 +109,34 @@ POST /api/auth/refresh
 ### 4.2 面试管理API
 
 **获取候选人列表**
+
 ```
 GET /api/candidates
 ```
 
 查询参数：
-| 参数名 | 类型 | 必填 | 描述 |
-|--------|------|------|------|
-| page | integer | 否 | 页码，默认1 |
-| limit | integer | 否 | 每页数量，默认20 |
-| status | string | 否 | 候选人状态 |
-| keyword | string | 否 | 搜索关键词 |
+
+| 参数名     | 类型      | 必填 | 描述        |
+| ------- | ------- | -- | --------- |
+| page    | integer | 否  | 页码，默认1    |
+| limit   | integer | 否  | 每页数量，默认20 |
+| status  | string  | 否  | 候选人状态     |
+| keyword | string  | 否  | 搜索关键词     |
 
 **创建面试安排**
+
 ```
 POST /api/interviews
 ```
 
 **上传简历**
+
 ```
 POST /api/candidates/:id/resume
 ```
 
 **获取面试结果**
+
 ```
 GET /api/interviews/:id/result
 ```
@@ -127,16 +144,19 @@ GET /api/interviews/:id/result
 ### 4.3 数据分析API
 
 **仪表板统计数据**
+
 ```
 GET /api/dashboard/stats
 ```
 
 **面试趋势图表数据**
+
 ```
 GET /api/dashboard/trends
 ```
 
 **面试官效率分析**
+
 ```
 GET /api/dashboard/efficiency
 ```
@@ -237,6 +257,7 @@ erDiagram
 ### 6.2 数据定义语言
 
 **用户表 (users)**
+
 ```sql
 -- 创建用户表
 CREATE TABLE users (
@@ -259,6 +280,7 @@ CREATE INDEX idx_users_active ON users(is_active);
 ```
 
 **候选人表 (candidates)**
+
 ```sql
 -- 创建候选人表
 CREATE TABLE candidates (
@@ -285,6 +307,7 @@ CREATE INDEX idx_candidates_created ON candidates(created_at DESC);
 ```
 
 **面试表 (interviews)**
+
 ```sql
 -- 创建面试表
 CREATE TABLE interviews (
@@ -312,6 +335,7 @@ CREATE INDEX idx_interviews_status ON interviews(status);
 ```
 
 **评价表 (evaluations)**
+
 ```sql
 -- 创建评价表
 CREATE TABLE evaluations (
@@ -340,6 +364,7 @@ CREATE INDEX idx_evaluations_overall ON evaluations(overall_score DESC);
 ```
 
 **简历表 (resumes)**
+
 ```sql
 -- 创建简历表
 CREATE TABLE resumes (
@@ -376,3 +401,4 @@ INSERT INTO system_settings (key, value, description) VALUES
 ('resume_parsing_enabled', 'true', '是否启用简历解析'),
 ('video_quality', 'hd', '视频通话质量设置');
 ```
+

@@ -1,5 +1,8 @@
-from app.database import get_db_connection
-from app.config import Config
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app.core.database import get_db_connection
+from app.core.config import Config
 import time
 
 def upgrade_db():

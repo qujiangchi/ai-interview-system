@@ -1,5 +1,8 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sqlite3
-from config import Config
+from app.core.config import Config
 import os
 
 def init_sqlite_db():

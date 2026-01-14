@@ -1,3 +1,21 @@
+"""
+Interview Questions Generation Script
+面试问题生成脚本
+
+此脚本负责：
+1. 定期检查尚未开始的面试任务
+2. 从数据库中提取候选人简历和岗位要求
+3. 调用 AI 大模型生成定制化的面试问题
+4. 将生成的问题存入数据库，供面试环节使用
+
+该脚本通常作为后台守护进程运行。
+"""
+
+import sys
+import os
+# 添加项目根目录到 Python 路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import schedule
 import threading
@@ -6,11 +24,11 @@ import io
 from datetime import datetime
 from openai import OpenAI
 import PyPDF2
-import os
+import logging
 
-from config import Config
-from logger import question_logger as logger
-from database import get_db_connection
+from app.core.config import Config
+from app.core.logger import question_logger as logger
+from app.core.database import get_db_connection
 
 # 初始化OpenAI客户端
 client = OpenAI(
@@ -18,8 +36,17 @@ client = OpenAI(
     base_url=Config.OPENAI_BASE_URL
 )
     
-# 从PDF二进制数据中提取文本内容
 def extract_text_from_pdf(pdf_content):
+    """
+    从PDF二进制数据中提取文本内容
+    Extract text from PDF binary content
+    
+    Args:
+        pdf_content (bytes): PDF文件二进制数据
+        
+    Returns:
+        str: 提取的文本内容
+    """
     try:
         # 如果输入是None或空值，返回空字符串
         if pdf_content is None or pdf_content == b'':
@@ -52,8 +79,11 @@ def extract_text_from_pdf(pdf_content):
         except:
             return "无法解析简历内容"
 
-# 获取未开始的面试列表
 def get_pending_interviews():
+    """
+    获取未开始的面试列表
+    Fetch all pending interviews (status = 0)
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -68,8 +98,11 @@ def get_pending_interviews():
     conn.close()
     return interviews
 
-# 获取候选人信息
 def get_candidate_info(candidate_id):
+    """
+    获取候选人信息
+    Fetch candidate info by ID
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -83,8 +116,11 @@ def get_candidate_info(candidate_id):
     conn.close()
     return candidate
 
-# 获取岗位信息
 def get_position_info(position_id):
+    """
+    获取岗位信息
+    Fetch position info by ID
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -98,16 +134,17 @@ def get_position_info(position_id):
     conn.close()
     return position
 
-# 根据简历内容和岗位信息生成面试问题
 def generate_questions(resume_content, position_name, requirements, responsibilities):
+    """
+    根据简历内容和岗位信息生成面试问题
+    Generate interview questions using LLM
+    """
     # 解析简历内容 : 抽取pdf中resume_content的文本内容
     try:
         resume_text = extract_text_from_pdf(resume_content)
     except:
         resume_text = "无法解析简历内容"
     
-    # logger.debug(f"resume_text: {resume_text[:100]}...")
-
     # 返回json格式参考
     json_format = [
          {"question": "请介绍一下你的专业背景和技能", "score_standard": "清晰度5分，相关性5分，深度5分"},
@@ -132,8 +169,11 @@ def generate_questions(resume_content, position_name, requirements, responsibili
         # 解析响应内容
         questions_json = response.choices[0].message.content
         questions = json.loads(questions_json)
-        # logger.info(f"Generated questions: {questions}")
         
+        # 兼容不同格式的返回 (有时模型会返回 {'questions': [...]})
+        if isinstance(questions, dict) and 'questions' in questions:
+            questions = questions['questions']
+            
         return questions
 
     except Exception as e:
@@ -146,21 +186,24 @@ def generate_questions(resume_content, position_name, requirements, responsibili
         ]
  
 
-# 将生成的问题保存到数据库
 def save_questions(interview_id, questions):
+    """
+    将生成的问题保存到数据库
+    Save generated questions to DB
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
     for question in questions:
         # 将score_standard转换为JSON字符串(如果是字典类型)
-        score_standard = question['score_standard']
+        score_standard = question.get('score_standard', '')
         if isinstance(score_standard, dict):
             score_standard = json.dumps(score_standard, ensure_ascii=False)
             
         cursor.execute('''
             INSERT INTO interview_questions (interview_id, question, score_standard)
             VALUES (?, ?, ?)
-        ''', (interview_id, question['question'], score_standard))
+        ''', (interview_id, question.get('question'), score_standard))
     
     # 更新面试状态为"试题已备好"(1)
     cursor.execute('''
@@ -170,8 +213,11 @@ def save_questions(interview_id, questions):
     conn.commit()
     conn.close()
 
-# 主处理函数
 def process_pending_interviews():
+    """
+    处理未开始的面试的主逻辑
+    Main processing function
+    """
     logger.info("开始处理未开始的面试...")
     
     # 获取所有未开始的面试
@@ -184,7 +230,18 @@ def process_pending_interviews():
     logger.info(f"找到 {len(pending_interviews)} 个待处理的面试")
     
     for interview in pending_interviews:
-        interview_id, candidate_id, interviewer, start_time = interview
+        # Check if interview is dict (Postgres) or Row (SQLite)
+        if isinstance(interview, dict):
+            interview_id = interview['id']
+            candidate_id = interview['candidate_id']
+            interviewer = interview['interviewer']
+            start_time = interview['start_time']
+        else:
+            # Assume tuple/Row
+            interview_id = interview['id']
+            candidate_id = interview['candidate_id']
+            interviewer = interview['interviewer']
+            start_time = interview['start_time']
         
         # 获取候选人信息
         candidate = get_candidate_info(candidate_id)
@@ -192,15 +249,31 @@ def process_pending_interviews():
             logger.error(f"无法找到候选人ID: {candidate_id}的信息")
             continue
         
-        candidate_id, candidate_name, candidate_email, resume_content, position_id = candidate
+        if isinstance(candidate, dict):
+            candidate_name = candidate['name']
+            candidate_email = candidate['email']
+            resume_content = candidate['resume_content']
+            position_id = candidate['position_id']
+        else:
+            candidate_name = candidate['name']
+            candidate_email = candidate['email']
+            resume_content = candidate['resume_content']
+            position_id = candidate['position_id']
         
         # 获取岗位信息
         position = get_position_info(position_id)
         if not position:
             logger.error(f"无法找到岗位ID: {position_id}的信息")
             continue
-        
-        position_id, position_name, requirements, responsibilities = position
+            
+        if isinstance(position, dict):
+            position_name = position['name']
+            requirements = position['requirements']
+            responsibilities = position['responsibilities']
+        else:
+            position_name = position['name']
+            requirements = position['requirements']
+            responsibilities = position['responsibilities']
         
         logger.info(f"为面试ID: {interview_id}, 候选人: {candidate_name}, 岗位: {position_name} 生成面试问题")
         
@@ -210,18 +283,19 @@ def process_pending_interviews():
         # 保存问题到数据库
         save_questions(interview_id, questions)
 
-        
         logger.info(f"已为面试ID: {interview_id} 成功生成 {len(questions)} 个问题")
 
-# 定时任务
 def run_scheduler():
+    """
+    定时任务调度器
+    Scheduler runner
+    """
     schedule.every(5).minutes.do(process_pending_interviews)
     
     while True:
         schedule.run_pending()
         time.sleep(1)
 
-# 主函数
 if __name__ == "__main__":
   
     # 立即运行一次，然后启动定时任务

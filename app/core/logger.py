@@ -3,7 +3,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 # 创建日志目录
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+# app/core/logger.py -> app/core -> app -> project -> logs
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 

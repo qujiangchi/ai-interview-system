@@ -1,7 +1,8 @@
+import os
 import sqlite3
 
 # 连接到SQLite数据库（如果不存在则创建）
-conn = sqlite3.connect('interview_system.db')
+conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'interview_system.db'))
 cursor = conn.cursor()
 
 # 创建待招聘岗位表

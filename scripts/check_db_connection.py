@@ -1,6 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import psycopg2
 import os
-from config import Config
+from app.core.config import Config
 
 # 强制设置 DB_TYPE 为 postgres，以防环境变量未设置
 os.environ["DB_TYPE"] = "postgres"

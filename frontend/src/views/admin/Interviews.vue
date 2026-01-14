@@ -22,7 +22,8 @@
         <template #default="scope">
           <el-button size="small" @click="handleEdit(scope.row)">Edit</el-button>
           <el-button size="small" type="primary" @click="startInterview(scope.row.token)">Start Interview</el-button>
-          <el-button size="small" type="info" @click="downloadReport(scope.row.id)" :disabled="scope.row.status < 3">Report</el-button>
+          <el-button size="small" type="info" @click="downloadReport(scope.row.id)" :disabled="scope.row.status < 3">Download</el-button>
+          <el-button size="small" type="warning" @click="previewReport(scope.row.id)" :disabled="scope.row.status < 3">Preview</el-button>
           <el-button size="small" type="danger" @click="handleDelete(scope.row)">Delete</el-button>
         </template>
       </el-table-column>
@@ -178,18 +179,21 @@ const startInterview = (token: string) => {
 
 const downloadReport = (id: number) => {
     const token = localStorage.getItem('token')
-    // Open in new tab for preview (browser handles pdf)
-    // Add token to query param if needed, or rely on cookie if set?
-    // Since we use header for auth, opening in new tab is tricky for protected routes.
-    // However, we can use a temporary approach: 
-    // 1. Fetch with blob as before, then open blob url in new tab.
-    // 2. Or change API to allow query param token (less secure but common for downloads).
-    
-    // Let's stick to blob approach but open in new window for preview
-    request.get(`/admin/interviews/${id}/report?preview=true`, { responseType: 'blob' }).then((res: any) => {
-        const url = window.URL.createObjectURL(new Blob([res], { type: 'application/pdf' }))
-        window.open(url, '_blank')
-    })
+    // 直接构造下载链接，让浏览器处理
+    const url = `/api/admin/interviews/${id}/report?preview=false&token=${token}`
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `interview_report_${id}.pdf`) // 这里的 download 属性可能被 Content-Disposition 覆盖，但可以作为提示
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+}
+
+const previewReport = (id: number) => {
+    const token = localStorage.getItem('token')
+    // 直接在新窗口打开 PDF 链接
+    const url = `/api/admin/interviews/${id}/report?preview=true&token=${token}`
+    window.open(url, '_blank')
 }
 
 const handleSubmit = async () => {
