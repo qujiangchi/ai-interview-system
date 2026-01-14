@@ -67,12 +67,54 @@ sequenceDiagram
     System->>HR: 8. 提供 PDF 报告下载
 ```
 
+### 2. 数据流向图 (Data Flow)
+```mermaid
+graph LR
+    Resume[简历 PDF] --> Parser[简历解析器]
+    JD[职位描述] --> Prompt[Prompt 构建器]
+    Parser --> Prompt
+    Prompt --> LLM_Gen[LLM: 题目生成]
+    LLM_Gen --> Q_DB[(题目数据库)]
+    
+    Audio[语音回答] --> Whisper[Whisper ASR]
+    Whisper --> Text[回答文本]
+    Text --> LLM_Eval[LLM: 实时评分]
+    Q_DB --> LLM_Eval
+    LLM_Eval --> Score_DB[(评分数据库)]
+    
+    Score_DB --> Report_Gen[报告生成引擎]
+    Report_Gen --> PDF[评估报告 PDF]
+```
+
 ---
 
 ## 🏗️ 技术实现原理 (深度解析)
 
 ### 1. 核心架构设计
 系统采用 **微内核 + 异步工作流** 的架构。
+
+```mermaid
+graph TD
+    User["候选人/管理员"] --> API["Flask REST API"]
+    API --> Service["业务逻辑层"]
+    Service --> DB[("SQLite/PostgreSQL")]
+    Service --> LLM["LLM 服务 (OpenAI/Qwen)"]
+    Service --> Whisper["语音识别服务"]
+    
+    subgraph Core ["核心模块"]
+        Config["配置管理"]
+        Logger["日志系统"]
+        Auth["认证授权"]
+    end
+    
+    subgraph AsyncWorker ["后台任务"]
+        QGen["题目生成器"]
+        ReportGen["报告生成器"]
+        Evaluator["实时评分器"]
+    end
+    
+    API -.-> AsyncWorker
+```
 - **Web 核心 (`app/api`)**: 使用 Flask 处理轻量级请求，负责权限校验和状态流转。
 - **核心基座 (`app/core`)**: 统一封装配置、数据库适配器（适配 SQLite/PostgreSQL）和日志系统。
 - **异步工作者 (`scripts/`)**: 题目生成和报告生成属于耗时操作，通过独立进程运行，避免阻塞主 Web 线程。
@@ -104,11 +146,47 @@ sequenceDiagram
 ## 🧠 模型选择与部署指南
 
 ### 1. 语音识别 (Whisper)
-- **原理**: 基于 Transformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
-- **优缺点**:
-  - ✅ **高精度**: 对口音、背景噪音有极强的鲁棒性。
-  - ✅ **多语言**: 支持 99 种语言的识别与翻译。
-  - ❌ **资源消耗**: `large` 模型需要约 10GB VRAM，`base` 模型在 CPU 上运行较慢。
+- **原理**: 基于ransformer 的序列到序列 (Seq2Seq) 模型，在 68 万小时的多语言和多任务监督数据上进行训练。
+```mermaid
+erDiagram
+    POSITIONS ||--o{ CANDIDATES : "has"
+    CANDIDATES ||--o{ INTERVIEWS : "缺articipates"
+    INTERVIEWS ||--点{ INTERVIEW_QUESTIONS : "contain*"
+
+    POSITIONS {
+        *n: d PK
+        strig name "职位名称"
+        text requirement"岗位要求"
+       text responsibilities "岗位职"
+        int quantity "招聘数"
+    }
+
+    ANDIDATES{
+        i*t i高 PK
+        精nt position_i度 FK
+        s*ring nam: "姓名"
+         tring背email鲁"邮箱"
+       blobresume_content"文件"
+    }
+
+    INTERVIEWS {
+        int id PK
+         nt ca*dida*多_id FK
+        st语*ng tok*n "访问令牌"
+       9int翻。":未开始, 1:已生成题目, 2:进行中, 3:已完成, :报告已生成"
+        string report_path "PDF报告路径"
+    }
+
+    INTERVIEW_QUESTIONS {
+        int idPK
+        int  **资源消耗**:id FK
+        text  `large`约"0G"
+        blob answer_audio "语音 V"
+        text answer_text "R字ba"
+       `int ai_score运"行较评分"
+        text ai_evaluation慢"AI点。"
+    }
+```
 - **使用建议**:
   - **开发环境**: 推荐使用 `tiny` 或 `base` 模型，CPU 即可流畅运行。
   - **生产环境**: 推荐使用 `small` 或 `medium` 模型配合 GPU (CUDA)，平衡精度与延迟。
