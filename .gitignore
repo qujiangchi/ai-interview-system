@@ -1,0 +1,36 @@
+# Environments
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Nginx SSL
+nginx/ssl/*.key
+nginx/ssl/*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
